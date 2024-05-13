@@ -6,81 +6,169 @@
 //
 
 import SwiftUI
-import CoreData
 
-struct ContentView: View {
-    @Environment(\.managedObjectContext) private var viewContext
+enum CalcButton: String {
+    case one = "1", two = "2", three = "3", four = "4", five = "5", six = "6", seven = "7", eight = "8", nine = "9", zero = "0"
+    case add = "+", subtract = "-", divide = "÷", mutliply = "x", equal = "=", clear = "AC", decimal = ".", percent = "%", negative = "-/+"
 
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
-
-    var body: some View {
-        NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
+    var buttonColor: Color {
+        switch self {
+        case .add, .subtract, .mutliply, .divide, .equal:
+            return .orange
+        case .clear, .negative, .percent:
+            return Color(.lightGray)
+        default:
+            return Color(UIColor(red: 55/255.0, green: 55/255.0, blue: 55/255.0, alpha: 1))
         }
     }
 }
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
+enum Operation {
+    case add, subtract, multiply, divide, none
+}
 
-#Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+struct ContentView: View {
+    @State var value = "0"
+    @State var runningNumber: Decimal = 0
+    @State var currentOperation: Operation = .none
+
+    let buttons: [[CalcButton]] = [
+        [.clear, .negative, .percent, .divide],
+        [.seven, .eight, .nine, .mutliply],
+        [.four, .five, .six, .subtract],
+        [.one, .two, .three, .add],
+        [.zero, .decimal, .equal],
+    ]
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.black.edgesIgnoringSafeArea(.all)
+
+                VStack {
+                    Spacer()
+
+                    HStack {
+                        Spacer()
+                        Text(value)
+                            .bold()
+                            .font(.system(size: 100))
+                            .foregroundColor(.white)
+                    }
+                    .padding()
+
+                    ForEach(buttons, id: \.self) { row in
+                        HStack(spacing: 12) {
+                            ForEach(row, id: \.self) { item in
+                                Button(action: {
+                                    self.didTap(button: item)
+                                }, label: {
+                                    Text(item.rawValue)
+                                        .font(.system(size: 32))
+                                        .frame(
+                                            width: self.buttonWidth(item: item),
+                                            height: self.buttonHeight()
+                                        )
+                                        .background(item.buttonColor)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(self.buttonWidth(item: item)/2)
+                                })
+                            }
+                        }
+                        .padding(.bottom, 3)
+                    }
+                }
+            }
+            .navigationBarItems(trailing:
+                NavigationLink(destination: SettingsView()) {
+                    Image(systemName: "gear")
+                        .imageScale(.large)
+                        .padding()
+                }
+            )
+        }
+    }
+
+    func didTap(button: CalcButton) {
+        switch button {
+        case .add, .subtract, .mutliply, .divide, .equal:
+            if button == .add {
+                self.currentOperation = .add
+                self.runningNumber = Decimal(string: self.value) ?? 0
+            }
+            else if button == .subtract {
+                self.currentOperation = .subtract
+                self.runningNumber = Decimal(string: self.value) ?? 0
+            }
+            else if button == .mutliply {
+                self.currentOperation = .multiply
+                self.runningNumber = Decimal(string: self.value) ?? 0
+            }
+            else if button == .divide {
+                self.currentOperation = .divide
+                self.runningNumber = Decimal(string: self.value) ?? 0
+            }
+            else if button == .equal {
+                let runningValue = self.runningNumber
+                let currentValue = Decimal(string: self.value) ?? 0
+                switch self.currentOperation {
+                case .add: self.value = formatNumber(runningValue + currentValue)
+                case .subtract: self.value = formatNumber(runningValue - currentValue)
+                case .multiply: self.value = formatNumber(runningValue * currentValue)
+                case .divide:
+                    if currentValue != 0 {
+                        self.value = formatNumber(runningValue / currentValue)
+                    } else {
+                        self.value = "Error"
+                    }
+                case .none:
+                    break
+                }
+            }
+
+            if button != .equal {
+                self.value = "0"
+            }
+        case .clear:
+            self.value = "0"
+        case .decimal, .negative, .percent:
+            break
+        default:
+            let number = button.rawValue
+            if self.value == "0" {
+                value = number
+            }
+            else {
+                self.value = "\(self.value)\(number)"
+            }
+        }
+    }
+
+    func formatNumber(_ number: Decimal) -> String {
+        let numberFormatter = NumberFormatter()
+        if NSDecimalNumber(decimal: number).doubleValue > 9999999999 || NSDecimalNumber(decimal: number).doubleValue < -9999999999 {
+            numberFormatter.numberStyle = .scientific
+            numberFormatter.maximumSignificantDigits = 4
+        } else {
+            numberFormatter.numberStyle = .decimal
+        }
+        return numberFormatter.string(from: NSDecimalNumber(decimal: number)) ?? ""
+    }
+
+    func buttonWidth(item: CalcButton) -> CGFloat {
+        if item == .zero {
+            return ((UIScreen.main.bounds.width - (4*12)) / 4) * 2
+        }
+        return (UIScreen.main.bounds.width - (5*12)) / 4
+    }
+
+    func buttonHeight() -> CGFloat {
+        return (UIScreen.main.bounds.width - (5*12)) / 4
+    }
+}
+
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
 }
